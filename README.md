@@ -266,5 +266,4 @@ For questions or suggestions, please open an issue on GitHub.
 
 ---
 
-**Made with ⚛️ Quantum Computing & ❤️**
 
