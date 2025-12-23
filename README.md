@@ -255,14 +255,11 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 For questions or suggestions, please open an issue on GitHub.
 
-## 🔮 Future Work
+## 🔮 Credits
 
-- [ ] Support for real quantum hardware backends
-- [ ] Additional quantum algorithms (VQC, QSVM)
-- [ ] More complex portfolio optimization scenarios
-- [ ] Real-world dataset integration
-- [ ] Hyperparameter tuning interface
-- [ ] Model export functionality
+Created by Aryaki GitHub: @aryaki9
+
+
 
 ---
 
