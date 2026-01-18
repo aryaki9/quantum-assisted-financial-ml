@@ -10,8 +10,8 @@ def train_classical_model(X_train, y_train, X_test, y_test, model="logistic", pr
     if progress_callback:
         progress_callback(0.2, "Initializing classical model...")
     
-    # Limit classical model to use less data (quantum gets advantage)
-    max_train_classical = 2000  # Less than quantum's 3000
+    # Fair comparison: use same data limits as quantum model
+    max_train_classical = 5000  # Same as quantum (fair comparison)
     n_train = X_train.shape[0]
     
     if n_train > max_train_classical:
@@ -21,18 +21,27 @@ def train_classical_model(X_train, y_train, X_test, y_test, model="logistic", pr
         y_train = np.asarray(y_train)[idx_train]
     
     if model == "logistic":
-        # Use simpler logistic regression with basic settings (weaker baseline)
+        # Improved logistic regression (fair baseline)
         clf = LogisticRegression(
-            max_iter=200,  # Reduced iterations
+            max_iter=1000,  # More iterations for convergence
             n_jobs=-1, 
-            C=0.5,  # Lower C = more regularization (weaker)
+            C=1.0,  # Standard regularization
             solver='lbfgs',
-            penalty='l2'
+            penalty='l2',
+            class_weight='balanced'  # Handle imbalanced data
         )
     elif model == "rf":
-        clf = RandomForestClassifier(n_estimators=50, max_depth=10, random_state=42, n_jobs=-1)  # Weaker RF
+        # Improved RandomForest (fair baseline)
+        clf = RandomForestClassifier(
+            n_estimators=100,  # More trees
+            max_depth=15,      # Deeper trees
+            min_samples_split=5,
+            random_state=42, 
+            n_jobs=-1,
+            class_weight='balanced'
+        )
     elif model == "svm":
-        clf = SVC(kernel="rbf", probability=True, max_iter=200, C=1.0)
+        clf = SVC(kernel="rbf", probability=True, max_iter=500, C=1.0, class_weight='balanced')
     else:
         raise ValueError("Unknown model")
 

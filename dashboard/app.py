@@ -20,6 +20,7 @@ from src.classical_model import (
     classical_portfolio_opt,
 )  # classical baselines
 from src.portfolio_qaoa import portfolio_qubo
+from src.data_loader import load_credit_risk_data, get_dataset_info, get_portfolio_metrics
 
 
 @st.cache_data(show_spinner=False)
@@ -125,29 +126,43 @@ def generate_synthetic_nonlinear_data(n_samples=10000, n_features=10, random_sta
 
 
 @st.cache_data(show_spinner=False)
-def preprocess_data(test_size: float = 0.2, random_state: int = 42):
+def preprocess_data(test_size: float = 0.2, random_state: int = 42, dataset_type="synthetic"):
     """
-    Load or generate synthetic non-linear dataset and perform preprocessing.
+    Load and preprocess dataset (synthetic or real credit risk).
     Returns scaled train/test splits.
     """
-    # Load or generate synthetic non-linear dataset (uses saved CSV if available)
-    df = generate_synthetic_nonlinear_data(n_samples=10000, n_features=10, random_state=random_state, use_saved=True)
+    if dataset_type == "real":
+        # Load real credit risk dataset
+        X_train_scaled, X_test_scaled, y_train, y_test = load_credit_risk_data(
+            test_size=test_size,
+            random_state=random_state
+        )
+        # Create a dummy dataframe for compatibility
+        df = pd.DataFrame({
+            'info': ['Real Credit Risk Dataset'],
+            'samples': [len(y_train) + len(y_test)],
+            'features': [X_train_scaled.shape[1]]
+        })
+        return X_train_scaled, X_test_scaled, y_train, y_test, df
+    else:
+        # Load or generate synthetic non-linear dataset (uses saved CSV if available)
+        df = generate_synthetic_nonlinear_data(n_samples=10000, n_features=10, random_state=random_state, use_saved=True)
 
-    # ----- FEATURE/TARGET SPLIT -----
-    X = df.drop(columns=['target'])
-    y = df['target']
+        # ----- FEATURE/TARGET SPLIT -----
+        X = df.drop(columns=['target'])
+        y = df['target']
 
-    # ----- TRAIN-TEST SPLIT -----
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=random_state, stratify=y
-    )
+        # ----- TRAIN-TEST SPLIT -----
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state, stratify=y
+        )
 
-    # ----- STANDARDIZATION -----
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+        # ----- STANDARDIZATION -----
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
 
-    return X_train_scaled, X_test_scaled, y_train, y_test, df
+        return X_train_scaled, X_test_scaled, y_train, y_test, df
 
 
 def render_metrics_block(title: str, metrics: dict, extra_keys=None, color="blue"):
@@ -272,6 +287,19 @@ def main():
     
     st.sidebar.markdown("---")
     
+    # Dataset selection (only for Credit Risk mode)
+    dataset_type = "synthetic"
+    if mode == "Credit Risk Modeling":
+        st.sidebar.markdown("### 📊 Dataset Selection")
+        dataset_choice = st.sidebar.radio(
+            "**Choose Dataset**",
+            ["🔬 Synthetic Non-Linear", "💰 Real Credit Risk"],
+            index=1,  # Default to real credit risk
+            help="Synthetic: Complex non-linear patterns. Real: Actual credit risk data."
+        )
+        dataset_type = "real" if "Real" in dataset_choice else "synthetic"
+        st.sidebar.markdown("---")
+    
     run_button = None
     run_portfolio = None
     n_assets = 6
@@ -282,6 +310,15 @@ def main():
         st.sidebar.markdown("### 📈 Model Settings")
         test_size = st.sidebar.slider("Test Size", 0.1, 0.4, 0.2, 0.05, help="Fraction of data to use for testing")
         random_state = st.sidebar.number_input("Random Seed", value=42, step=1, help="For reproducibility")
+        
+        # Show dataset info
+        if dataset_type == "real":
+            try:
+                info = get_dataset_info()
+                st.sidebar.info(f"📁 **Real Dataset**: {info['n_samples']:,} samples, {info['n_features']} features")
+            except:
+                pass
+        
         run_button = st.sidebar.button("🚀 Run Training", type="primary", use_container_width=True)
     elif mode == "Portfolio Optimization":
         st.sidebar.markdown("### 📊 Portfolio Settings")
@@ -303,20 +340,45 @@ def main():
             key="sidebar_risk",
             help="Higher values penalize risk more"
         )
+        
+        # Portfolio Data Source
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 📊 Data Source")
+        portfolio_data_source = st.sidebar.radio(
+            "**Select Data Source**",
+            ["🔬 Synthetic Returns", "💰 Real Credit Data"],
+            index=1,
+            help="Synthetic: Randomly generated. Real: Based on loan intents from credit_risk_dataset.csv"
+        )
+        p_data_type = "real" if "Real" in portfolio_data_source else "synthetic"
+        
         run_portfolio = st.sidebar.button("🚀 Run Portfolio Optimization", type="primary", key="sidebar_portfolio", use_container_width=True)
 
     # ----- DATA PREVIEW -----
-    with st.expander("Show raw data sample", expanded=False):
+    with st.expander("📋 Show raw data sample", expanded=False):
         try:
-            df = generate_synthetic_nonlinear_data(n_samples=10000, n_features=10, random_state=42, use_saved=True)
-            st.write(f"Dataset shape: {df.shape[0]} rows × {df.shape[1]} columns")
-            saved_path = REPO_ROOT / "data" / "synthetic_nonlinear_dataset.csv"
-            if saved_path.exists():
-                st.info(f"📁 Loaded from: `data/synthetic_nonlinear_dataset.csv`")
+            # Show real credit risk data if selected in either mode
+            is_real_credit_risk = (mode == "Credit Risk Modeling" and dataset_type == "real")
+            is_real_portfolio = (mode == "Portfolio Optimization" and p_data_type == "real")
+            
+            if is_real_credit_risk or is_real_portfolio:
+                info = get_dataset_info()
+                st.write(f"**Real Credit Risk Dataset**")
+                st.write(f"📊 Shape: {info['n_samples']:,} rows × {info['n_features']+1} columns")
+                st.info(f"📁 Loaded from: `data/credit_risk_dataset.csv`")
+                st.write(f"**Target**: {info['target_col']}")
+                st.write(f"**Class Distribution**: {info['target_distribution']}")
+                st.dataframe(info['sample_data'], width='stretch')
             else:
-                st.info("🔄 Generated on-the-fly (will be saved for next time)")
-            st.write("**Synthetic Non-Linear Dataset** - Designed with complex patterns that favor quantum models")
-            st.dataframe(df.head(), width='stretch')
+                df = generate_synthetic_nonlinear_data(n_samples=10000, n_features=10, random_state=42, use_saved=True)
+                st.write(f"Dataset shape: {df.shape[0]} rows × {df.shape[1]} columns")
+                saved_path = REPO_ROOT / "data" / "synthetic_nonlinear_dataset.csv"
+                if saved_path.exists():
+                    st.info(f"📁 Loaded from: `data/synthetic_nonlinear_dataset.csv`")
+                else:
+                    st.info("🔄 Generated on-the-fly (will be saved for next time)")
+                st.write("**Synthetic Non-Linear Dataset** - Designed with complex patterns that favor quantum models")
+                st.dataframe(df.head(), width='stretch')
         except Exception as e:
             st.error(f"Error loading/generating data: {e}")
 
@@ -324,8 +386,11 @@ def main():
     # CREDIT RISK CLASSIFICATION
     # ==========================
     if mode == "Credit Risk Modeling":
-        st.markdown("## 💳 Non-Linear Classification")
-        st.markdown("Compare quantum-inspired and classical models on a **synthetic non-linear dataset** designed to showcase quantum advantages")
+        st.markdown("## 💳 Credit Risk Classification")
+        if dataset_type == "real":
+            st.markdown("Compare quantum-inspired and classical models on **real credit risk data** with enhanced feature engineering")
+        else:
+            st.markdown("Compare quantum-inspired and classical models on a **synthetic non-linear dataset** designed to showcase quantum advantages")
         
         if not run_button:
             st.info("👆 **Click 'Run Training' in the sidebar** to train and compare models.")
@@ -349,7 +414,7 @@ def main():
             try:
                 with st.spinner("🔄 Preprocessing data..."):
                     X_train, X_test, y_train, y_test, df_clean = preprocess_data(
-                        test_size=test_size, random_state=int(random_state)
+                        test_size=test_size, random_state=int(random_state), dataset_type=dataset_type
                     )
             except Exception as e:
                 st.error(f"❌ Preprocessing failed: {e}")
@@ -490,18 +555,33 @@ def main():
             # Show parameter summary
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Assets Available", n_assets)
+                st.metric("Source", "Real Credit Data" if p_data_type == "real" else "Synthetic")
             with col2:
-                st.metric("Max to Select", cardinality)
+                st.metric("Assets Available", n_assets)
             with col3:
-                st.metric("Risk Aversion (λ)", f"{risk_aversion:.2f}")
+                st.metric("Max to Select", cardinality)
         else:
-            # Synthetic returns and covariance
-            np.random.seed(0)
-            n = int(n_assets)
-            mu = np.random.normal(0.05, 0.02, size=n)
-            A = np.random.rand(n, n)
-            cov = A.T @ A * 0.001
+            # Load metrics based on source
+            asset_names = [f"Asset {i}" for i in range(int(n_assets))]
+            if p_data_type == "real":
+                with st.spinner("📊 Fetching metrics from real credit dataset..."):
+                    try:
+                        mu, cov, asset_names = get_portfolio_metrics(n_assets=int(n_assets))
+                        n = len(mu)
+                    except Exception as e:
+                        st.error(f"Error loading real data: {e}. Falling back to synthetic.")
+                        np.random.seed(0)
+                        n = int(n_assets)
+                        mu = np.random.normal(0.05, 0.02, size=n)
+                        A = np.random.rand(n, n)
+                        cov = A.T @ A * 0.001
+            else:
+                # Synthetic returns and covariance
+                np.random.seed(0)
+                n = int(n_assets)
+                mu = np.random.normal(0.05, 0.02, size=n)
+                A = np.random.rand(n, n)
+                cov = A.T @ A * 0.001
 
             progress = st.progress(0)
             status = st.empty()
@@ -544,7 +624,7 @@ def main():
                     
                     # Selection visualization
                     fig_classical = go.Figure(data=[
-                        go.Bar(x=[f"Asset {i}" for i in range(n)], 
+                        go.Bar(x=asset_names, 
                               y=selected,
                               marker_color=['#10b981' if i in selected_indices else '#e5e7eb' for i in range(n)],
                               text=selected,
@@ -564,7 +644,7 @@ def main():
                     st.metric("📈 Score", f"{val_classical:.4f}", help="Expected Return - λ × Variance")
                     st.metric("💰 Expected Return", f"{exp_ret:.4f}")
                     st.metric("📊 Variance", f"{variance:.6f}")
-                    st.caption(f"Selected assets: {selected_indices}")
+                    st.caption(f"Selected: {[asset_names[i] for i in selected_indices]}")
                 else:
                     st.warning("No classical solution available.")
 
@@ -576,7 +656,7 @@ def main():
                     
                     # Selection visualization
                     fig_quantum = go.Figure(data=[
-                        go.Bar(x=[f"Asset {i}" for i in range(n)], 
+                        go.Bar(x=asset_names, 
                               y=sel,
                               marker_color=['#8b5cf6' if i in selected_indices else '#e5e7eb' for i in range(n)],
                               text=sel,
@@ -593,7 +673,7 @@ def main():
                     st.metric("📈 Score", f"{qres['score']:.4f}", help="Expected Return - λ × Variance")
                     st.metric("💰 Expected Return", f"{qres['expected_return']:.4f}")
                     st.metric("📊 Variance", f"{qres['variance']:.6f}")
-                    st.caption(f"Selected assets: {selected_indices}")
+                    st.caption(f"Selected: {[asset_names[i] for i in selected_indices]}")
                 else:
                     st.warning("No QAOA solution available.")
 

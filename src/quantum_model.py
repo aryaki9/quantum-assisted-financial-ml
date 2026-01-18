@@ -26,32 +26,49 @@ def _encode_angles(X):
 
 def _enhanced_quantum_feature_map(x):
     """
-    Enhanced quantum-inspired feature map with very rich transformations.
-    Combines trigonometric, polynomial, and interaction features for superior performance.
+    Enhanced quantum-inspired feature map with credit risk-specific transformations.
+    Combines trigonometric, polynomial, exponential, logarithmic, and interaction features.
+    Optimized for credit risk patterns and non-linear relationships.
     """
     x = np.asarray(x, dtype=float)
     n_features = x.shape[1]
     n_samples = x.shape[0]
     
-    # Base trigonometric features (quantum-inspired)
+    # Base trigonometric features (quantum-inspired - capture periodic patterns)
     cos_features = np.cos(x)
     sin_features = np.sin(x)
-    tanh_features = np.tanh(x)  # Additional non-linearity
+    tanh_features = np.tanh(x)  # Bounded non-linearity
+    
+    # Credit-specific transformations
+    # Exponential features for risk decay (age, credit history)
+    exp_features = np.exp(-np.abs(x) / 10.0)  # Scaled to prevent overflow
+    
+    # Logarithmic features for income/loan amounts (diminishing returns)
+    log_features = np.log1p(np.abs(x))  # log(1 + |x|) to handle negatives
     
     # Polynomial features for richer representation
     x_squared = x ** 2
     x_cubed = x ** 3
     x_sqrt = np.sqrt(np.abs(x))  # Square root features
     
-    # More pairwise interactions for better feature engineering
+    # Enhanced pairwise interactions for credit risk
     interactions = []
     if n_features > 1:
-        # More comprehensive interactions
-        for i in range(min(8, n_features)):
-            for j in range(i+1, min(i+5, n_features)):
+        # Comprehensive interactions (product and ratio)
+        for i in range(min(10, n_features)):
+            for j in range(i+1, min(i+6, n_features)):
+                # Multiplicative interactions
                 interactions.append(x[:, i] * x[:, j])
-                # Also add ratio features
+                # Ratio features (important for debt-to-income, etc.)
                 interactions.append(x[:, i] / (np.abs(x[:, j]) + 1e-8))
+        
+        # Add some higher-order interactions for first few features
+        if n_features >= 3:
+            for i in range(min(3, n_features)):
+                for j in range(i+1, min(i+3, n_features)):
+                    for k in range(j+1, min(j+2, n_features)):
+                        # Three-way interaction
+                        interactions.append(x[:, i] * x[:, j] * x[:, k])
     
     if interactions:
         interactions = np.column_stack(interactions)
@@ -61,25 +78,33 @@ def _enhanced_quantum_feature_map(x):
         else:
             interactions = np.zeros((n_samples, 1))
     
-    # Statistical features (mean, std per sample)
+    # Statistical aggregations per sample (capture overall risk profile)
     mean_feat = np.mean(x, axis=1, keepdims=True)
     std_feat = np.std(x, axis=1, keepdims=True)
     max_feat = np.max(x, axis=1, keepdims=True)
     min_feat = np.min(x, axis=1, keepdims=True)
+    median_feat = np.median(x, axis=1, keepdims=True)
+    
+    # Range and skewness indicators
+    range_feat = max_feat - min_feat
     
     # Combine all features for maximum expressiveness
     return np.concatenate([
-        cos_features, 
-        sin_features,
-        tanh_features,
-        x_squared, 
-        x_cubed,
-        x_sqrt,
-        interactions,
-        mean_feat,
-        std_feat,
-        max_feat,
-        min_feat
+        cos_features,       # Periodic patterns
+        sin_features,       # Periodic patterns
+        tanh_features,      # Bounded non-linearity
+        exp_features,       # Risk decay patterns
+        log_features,       # Diminishing returns
+        x_squared,          # Quadratic relationships
+        x_cubed,            # Cubic relationships
+        x_sqrt,             # Sub-linear growth
+        interactions,       # Feature interactions
+        mean_feat,          # Average risk
+        std_feat,           # Risk variance
+        max_feat,           # Peak risk
+        min_feat,           # Minimum risk
+        median_feat,        # Central tendency
+        range_feat          # Risk spread
     ], axis=-1)
 
 
@@ -88,9 +113,9 @@ def quantum_kernel_svm(X_train, y_train, X_test, y_test, feature_map=None, backe
     Fast quantum-inspired classifier using RandomForest on enhanced quantum feature map.
     Much faster than SVC and typically performs better.
     """
-    # Use more data for better performance (quantum model gets advantage)
-    max_train = 3000  # More data than classical
-    max_test = 1500
+    # Fair comparison: use same data limits as classical model
+    max_train = 5000  # Same as classical (no artificial advantage)
+    max_test = 2000
 
     n_train = X_train.shape[0]
     n_test = X_test.shape[0]
